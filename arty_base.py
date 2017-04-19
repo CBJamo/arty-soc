@@ -10,7 +10,7 @@ from litex.boards.platforms import arty
 from litex.soc.integration.soc_core import mem_decoder
 from litex.soc.integration.soc_sdram import *
 from litex.soc.cores.flash import spi_flash
-from litex.soc.cores.uart.core import RS232PHY, UART
+from litex.soc.cores.uart import RS232PHY, UART
 from litex.soc.integration.builder import *
 from litex.soc.interconnect.wishbonebridge import WishboneStreamingBridge
 from litex.soc.interconnect.stream import *
