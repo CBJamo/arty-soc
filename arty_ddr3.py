@@ -1,111 +1,27 @@
 #!/usr/bin/env python3
-import argparse
-import os
 
-from litex.gen import *
-from litex.gen.genlib.resetsync import AsyncResetSynchronizer
+from arty_base import *
 
-from litex.boards.platforms import arty
-
-from litex.soc.integration.soc_core import mem_decoder
-from litex.soc.integration.soc_sdram import *
-from litex.soc.integration.builder import *
 from litex.soc.cores.uart import UARTWishboneBridge
-
-from litedram.modules import MT41K128M16
-from litedram.phy import a7ddrphy
-from litedram.frontend.bist import LiteDRAMBISTGenerator
-from litedram.frontend.bist import LiteDRAMBISTChecker
 
 from litescope import LiteScopeAnalyzer
 
-from gateware import dna, xadc
-
-
-class _CRG(Module):
-    def __init__(self, platform):
-        self.clock_domains.cd_sys = ClockDomain()
-        self.clock_domains.cd_sys4x = ClockDomain(reset_less=True)
-        self.clock_domains.cd_sys4x_dqs = ClockDomain(reset_less=True)
-        self.clock_domains.cd_clk200 = ClockDomain()
-        self.clock_domains.cd_clk50 = ClockDomain()
-
-        clk100 = platform.request("clk100")
-        rst = platform.request("cpu_reset")
-
-        pll_locked = Signal()
-        pll_fb = Signal()
-        self.pll_sys = Signal()
-        pll_sys4x = Signal()
-        pll_sys4x_dqs = Signal()
-        pll_clk200 = Signal()
-        pll_clk50 = Signal()
-        self.specials += [
-            Instance("PLLE2_BASE",
-                     p_STARTUP_WAIT="FALSE", o_LOCKED=pll_locked,
-
-                     # VCO @ 1600 MHz
-                     p_REF_JITTER1=0.01, p_CLKIN1_PERIOD=10.0,
-                     p_CLKFBOUT_MULT=16, p_DIVCLK_DIVIDE=1,
-                     i_CLKIN1=clk100, i_CLKFBIN=pll_fb, o_CLKFBOUT=pll_fb,
-
-                     # 100 MHz
-                     p_CLKOUT0_DIVIDE=16, p_CLKOUT0_PHASE=0.0,
-                     o_CLKOUT0=self.pll_sys,
-
-                     # 400 MHz
-                     p_CLKOUT1_DIVIDE=4, p_CLKOUT1_PHASE=0.0,
-                     o_CLKOUT1=pll_sys4x,
-
-                     # 400 MHz dqs
-                     p_CLKOUT2_DIVIDE=4, p_CLKOUT2_PHASE=90.0,
-                     o_CLKOUT2=pll_sys4x_dqs,
-
-                     # 200 MHz
-                     p_CLKOUT3_DIVIDE=8, p_CLKOUT3_PHASE=0.0,
-                     o_CLKOUT3=pll_clk200,
-
-                     # 50MHz
-                     p_CLKOUT4_DIVIDE=32, p_CLKOUT4_PHASE=0.0,
-                     o_CLKOUT4=pll_clk50
-            ),
-            Instance("BUFG", i_I=self.pll_sys, o_O=self.cd_sys.clk),
-            Instance("BUFG", i_I=pll_sys4x, o_O=self.cd_sys4x.clk),
-            Instance("BUFG", i_I=pll_sys4x_dqs, o_O=self.cd_sys4x_dqs.clk),
-            Instance("BUFG", i_I=pll_clk200, o_O=self.cd_clk200.clk),
-            Instance("BUFG", i_I=pll_clk50, o_O=self.cd_clk50.clk),
-            AsyncResetSynchronizer(self.cd_sys, ~pll_locked | ~rst),
-            AsyncResetSynchronizer(self.cd_clk200, ~pll_locked | rst),
-            AsyncResetSynchronizer(self.cd_clk50, ~pll_locked | ~rst),
-        ]
-
-        reset_counter = Signal(4, reset=15)
-        ic_reset = Signal(reset=1)
-        self.sync.clk200 += \
-            If(reset_counter != 0,
-                reset_counter.eq(reset_counter - 1)
-            ).Else(
-                ic_reset.eq(0)
-            )
-        self.specials += Instance("IDELAYCTRL", i_REFCLK=ClockSignal("clk200"), i_RST=ic_reset)
-
 
 class BaseSoC(SoCSDRAM):
-    default_platform = "arty"
-
-    csr_map = {
-        "ddrphy":    17,
-        "dna":       18,
-        "xadc":      19,
-        "generator": 20,
-        "checker":   21,
-        "analyzer":  22
+    csr_peripherals = {
+        "ddrphy",
+        "dna",
+        "xadc",
+        "generator",
+        "checker",
+        "analyzer",
     }
-    csr_map.update(SoCSDRAM.csr_map)
+    csr_map_update(SoCSDRAM.csr_map, csr_peripherals)
 
     def __init__(self, platform,
-                 with_sdram_bist=True, bist_async=True, bist_random=False):
-        clk_freq = 100*1000000
+                 with_sdram_bist=True, bist_async=True, bist_random=False,
+                 analyzer=None):
+        clk_freq = int(100e6)
         SoCSDRAM.__init__(self, platform, clk_freq,
             cpu_type=None,
             l2_size=32,
@@ -113,9 +29,12 @@ class BaseSoC(SoCSDRAM):
             with_uart=False,
             with_timer=False)
 
-        self.submodules.crg = _CRG(platform)
+        self.submodules.crg = CRG(platform)
         self.submodules.dna = dna.DNA()
         self.submodules.xadc = xadc.XADC()
+
+        self.crg.cd_sys.clk.attr.add("keep")
+        self.platform.add_period_constraint(self.crg.cd_sys.clk, period_ns(100e6))
 
         # sdram
         self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
@@ -136,9 +55,8 @@ class BaseSoC(SoCSDRAM):
         self.add_cpu_or_bridge(UARTWishboneBridge(platform.request("serial"), clk_freq, baudrate=115200))
         self.add_wb_master(self.cpu_or_bridge.wishbone)
 
-        # logic analyzer
-        analyzer_signals = [Signal(2)]
-        if False:
+        # analyzer
+        if analyzer == "generator":
             analyzer_signals = [
                 generator_user_port.cmd.valid,
                 generator_user_port.cmd.ready,
@@ -152,8 +70,8 @@ class BaseSoC(SoCSDRAM):
                 self.generator.start.re,
                 self.checker.start.re
             ]
-
-        if False:
+            self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 512)
+        elif analyzer == "checker":
             gen_data = Signal(32)
             read_data = Signal(32)
             self.comb += [
@@ -177,11 +95,11 @@ class BaseSoC(SoCSDRAM):
 
                 self.checker.core.errors
             ]
-
-        self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 512)
+            self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 512)
 
     def do_exit(self, vns):
-        self.analyzer.export_csv(vns, "test/analyzer.csv")
+        if hasattr(self, "analyzer"):
+            self.analyzer.export_csv(vns, "test/analyzer.csv")
 
 
 def main():

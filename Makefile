@@ -1,24 +1,24 @@
 CPU ?= lm32
 
-arty_base:
+base:
 	rm -rf build
 	./arty_base.py --nocompile-gateware --cpu-type $(CPU)
 	cd firmware && make clean all
 	./arty_base.py --cpu-type $(CPU)
 
-arty_minisoc:
+ddr3:
+	rm -rf build
+	./arty_ddr3.py
+
+minisoc:
 	rm -rf build
 	./arty_base.py --with-ethernet --nocompile-gateware --cpu-type $(CPU)
 	cd firmware && make clean all
 	./arty_base.py --with-ethernet --cpu-type $(CPU)
 
-arty_etherbone:
+etherbone:
 	rm -rf build
 	./arty_etherbone.py
-
-arty_ddr3:
-	rm -rf build
-	./arty_ddr3.py
 
 load:
 	./load.py

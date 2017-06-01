@@ -24,7 +24,16 @@ from litedram.frontend.bist import LiteDRAMBISTChecker
 from liteeth.phy import LiteEthPHY
 from liteeth.core.mac import LiteEthMAC
 
-from gateware import dna, xadc, led
+from litex.soc.cores import dna, xadc
+from gateware import led
+
+
+def csr_map_update(csr_map, csr_peripherals):
+    csr_map.update(dict((n, v)
+        for v, n in enumerate(csr_peripherals, start=max(csr_map.values()) + 1)))
+
+def period_ns(freq):
+    return 1e9/freq
 
 
 class UARTVirtualPhy:
@@ -33,7 +42,7 @@ class UARTVirtualPhy:
         self.source = Endpoint([("data", 8)])
 
 
-class _CRG(Module):
+class CRG(Module):
     def __init__(self, platform):
         self.clock_domains.cd_sys = ClockDomain()
         self.clock_domains.cd_sys4x = ClockDomain(reset_less=True)
@@ -42,7 +51,7 @@ class _CRG(Module):
         self.clock_domains.cd_clk50 = ClockDomain()
 
         clk100 = platform.request("clk100")
-        rst = platform.request("cpu_reset")
+        rst = ~platform.request("cpu_reset")
 
         pll_locked = Signal()
         pll_fb = Signal()
@@ -85,9 +94,9 @@ class _CRG(Module):
             Instance("BUFG", i_I=pll_sys4x_dqs, o_O=self.cd_sys4x_dqs.clk),
             Instance("BUFG", i_I=pll_clk200, o_O=self.cd_clk200.clk),
             Instance("BUFG", i_I=pll_clk50, o_O=self.cd_clk50.clk),
-            AsyncResetSynchronizer(self.cd_sys, ~pll_locked | ~rst),
+            AsyncResetSynchronizer(self.cd_sys, ~pll_locked | rst),
             AsyncResetSynchronizer(self.cd_clk200, ~pll_locked | rst),
-            AsyncResetSynchronizer(self.cd_clk50, ~pll_locked | ~rst),
+            AsyncResetSynchronizer(self.cd_clk50, ~pll_locked | rst),
         ]
 
         reset_counter = Signal(4, reset=15)
@@ -106,43 +115,45 @@ class _CRG(Module):
             Instance("BUFG", i_I=eth_clk, o_O=platform.request("eth_ref_clk")),
         ]
 
-class BaseSoC(SoCSDRAM):
-    default_platform = "arty"
 
-    csr_map = {
-        "spiflash":  16,
-        "ddrphy":    17,
-        "dna":       18,
-        "xadc":      19,
-        "leds":      20,
-        "rgb_leds":  21,
-        "generator": 22,
-        "checker":   23
+class BaseSoC(SoCSDRAM):
+    csr_peripherals = {
+        "spiflash",
+        "ddrphy",
+        "dna",
+        "xadc",
+        "leds",
+        "rgb_leds",
+        "generator",
+        "checker",
     }
-    csr_map.update(SoCSDRAM.csr_map)
+    csr_map_update(SoCSDRAM.csr_map, csr_peripherals)
 
     mem_map = {
         "spiflash": 0x20000000,  # (default shadow @0xa0000000)
     }
     mem_map.update(SoCSDRAM.mem_map)
 
-    def __init__(self,
-                 platform,
+    def __init__(self, platform,
                  with_sdram_bist=True, bist_async=True, bist_random=True,
                  spiflash="spiflash_1x",
                  **kwargs):
-        clk_freq = 100*1000000
+        clk_freq = int(100e6)
         SoCSDRAM.__init__(self, platform, clk_freq,
             integrated_rom_size=0x8000,
             integrated_sram_size=0x8000,
             with_uart=False,
             **kwargs)
 
-        self.submodules.crg = _CRG(platform)
+        self.submodules.crg = CRG(platform)
         self.submodules.dna = dna.DNA()
         self.submodules.xadc = xadc.XADC()
 
-        self.submodules.leds = led.ClassicLed(Cat(platform.request("user_led", i) for i in range(4)))
+        self.crg.cd_sys.clk.attr.add("keep")
+        self.platform.add_period_constraint(self.crg.cd_sys.clk, period_ns(100e6))
+
+        self.submodules.leds = led.ClassicLed(Cat(platform.request("user_led", i)
+            for i in range(4)))
         self.submodules.rgb_leds = led.RGBLed(platform.request("rgb_leds"))
 
         # sdram
@@ -209,11 +220,11 @@ class BaseSoC(SoCSDRAM):
         self.add_wb_master(self.bridge.wishbone)
 
 class MiniSoC(BaseSoC):
-    csr_map = {
-        "ethphy": 30,
-        "ethmac": 31
+    csr_peripherals = {
+        "ethphy",
+        "ethmac",
     }
-    csr_map.update(BaseSoC.csr_map)
+    csr_map_update(BaseSoC.csr_map, csr_peripherals)
 
     interrupt_map = {
         "ethmac": 2,
@@ -237,9 +248,8 @@ class MiniSoC(BaseSoC):
 
         self.ethphy.crg.cd_eth_rx.clk.attr.add("keep")
         self.ethphy.crg.cd_eth_tx.clk.attr.add("keep")
-        self.platform.add_period_constraint(self.crg.cd_sys.clk, 10.0)
-        self.platform.add_period_constraint(self.ethphy.crg.cd_eth_rx.clk, 40.0)
-        self.platform.add_period_constraint(self.ethphy.crg.cd_eth_tx.clk, 40.0)
+        self.platform.add_period_constraint(self.ethphy.crg.cd_eth_rx.clk, period_ns(25e6))
+        self.platform.add_period_constraint(self.ethphy.crg.cd_eth_tx.clk, period_ns(25e6))
         self.platform.add_false_path_constraints(
             self.crg.cd_sys.clk,
             self.ethphy.crg.cd_eth_rx.clk,
@@ -250,6 +260,7 @@ class MiniSoC(BaseSoC):
             s = ip_type + str(i + 1)
             s = s.upper()
             self.add_constant(s, e)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Arty LiteX SoC")
