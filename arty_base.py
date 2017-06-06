@@ -10,9 +10,8 @@ from litex.boards.platforms import arty
 from litex.soc.integration.soc_core import mem_decoder
 from litex.soc.integration.soc_sdram import *
 from litex.soc.cores import spi_flash
-from litex.soc.cores.uart import RS232PHY, UART
 from litex.soc.integration.builder import *
-from litex.soc.interconnect.wishbonebridge import WishboneStreamingBridge
+from litex.soc.cores.uart import *
 from litex.soc.interconnect.stream import *
 
 from litedram.modules import MT41K128M16
@@ -34,12 +33,6 @@ def csr_map_update(csr_map, csr_peripherals):
 
 def period_ns(freq):
     return 1e9/freq
-
-
-class UARTVirtualPhy:
-    def __init__(self):
-        self.sink = Endpoint([("data", 8)])
-        self.source = Endpoint([("data", 8)])
 
 
 class CRG(Module):
@@ -149,6 +142,15 @@ class BaseSoC(SoCSDRAM):
         self.submodules.dna = dna.DNA()
         self.submodules.xadc = xadc.XADC()
 
+        uart_interfaces = [RS232PHYInterface() for i in range(2)]
+        self.submodules.uart = UART(uart_interfaces[0])
+        self.submodules.bridge = WishboneStreamingBridge(uart_interfaces[1], self.clk_freq)
+        self.add_wb_master(self.bridge.wishbone)
+
+        self.submodules.uart_phy = RS232PHY(platform.request("serial"), self.clk_freq, 115200)
+        self.submodules.uart_multiplexer = UARTMultiplexer(uart_interfaces, self.uart_phy)
+        self.comb += self.uart_multiplexer.sel.eq(platform.request("user_sw", 0))
+
         self.crg.cd_sys.clk.attr.add("keep")
         self.platform.add_period_constraint(self.crg.cd_sys.clk, period_ns(100e6))
 
@@ -191,33 +193,6 @@ class BaseSoC(SoCSDRAM):
         self.add_memory_region("spiflash",
          	self.mem_map["spiflash"] | self.shadow_base, 16*1024*1024)
 
-
-        # uart mux
-        uart_sel = platform.request("user_sw", 0)
-
-        self.submodules.uart_phy = RS232PHY(platform.request("serial"), self.clk_freq, 115200)
-        uart_phys = {
-            "cpu": UARTVirtualPhy(),
-            "bridge": UARTVirtualPhy()
-        }
-        self.comb += [
-            If(uart_sel,
-                self.uart_phy.source.connect(uart_phys["bridge"].source),
-                uart_phys["bridge"].sink.connect(self.uart_phy.sink),
-                uart_phys["cpu"].source.ready.eq(1) # avoid stalling cpu
-            ).Else(
-                self.uart_phy.source.connect(uart_phys["cpu"].source),
-                uart_phys["cpu"].sink.connect(self.uart_phy.sink),
-                uart_phys["bridge"].source.ready.eq(1) # avoid stalling bridge
-            )
-        ]
-
-        # uart cpu
-        self.submodules.uart = UART(uart_phys["cpu"])
-
-        # uart bridge
-        self.submodules.bridge = WishboneStreamingBridge(uart_phys["bridge"], self.clk_freq)
-        self.add_wb_master(self.bridge.wishbone)
 
 class MiniSoC(BaseSoC):
     csr_peripherals = {
