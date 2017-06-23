@@ -119,8 +119,7 @@ while(not regs.checker_done.read()):
 print("errors: {:d}".format(regs.checker_err_count.read()))
 
 if run_analyzer:
-    while not analyzer.done():
-        pass
+    analyzer.wait_done()
     analyzer.upload()
     analyzer.save("dump.vcd")
 
