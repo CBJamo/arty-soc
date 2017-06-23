@@ -22,18 +22,30 @@ class AnalyzerSoC(EtherboneSoC):
         pmoda_1 = Signal(name_override="pmoda_1")
         pmoda_2 = Signal(name_override="pmoda_2")
         pmoda_3 = Signal(name_override="pmoda_3")
+        pmoda_4 = Signal(name_override="pmoda_4")
+        pmoda_5 = Signal(name_override="pmoda_5")
+        pmoda_6 = Signal(name_override="pmoda_6")
+        pmoda_7 = Signal(name_override="pmoda_7")        
         # deglitch with multireg
         self.specials += [
             MultiReg(pmoda[0], pmoda_0),
             MultiReg(pmoda[1], pmoda_1),
             MultiReg(pmoda[2], pmoda_2),
-            MultiReg(pmoda[3], pmoda_3)
+            MultiReg(pmoda[3], pmoda_3),
+            MultiReg(pmoda[4], pmoda_4),
+            MultiReg(pmoda[5], pmoda_5),
+            MultiReg(pmoda[6], pmoda_6),
+            MultiReg(pmoda[7], pmoda_7)
         ]
         analyzer_signals = [
             pmoda_0,
             pmoda_1,
             pmoda_2,
-            pmoda_3
+            pmoda_3,
+            pmoda_4,
+            pmoda_5,
+            pmoda_6,
+            pmoda_7            
         ]
         self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 8192)
 
