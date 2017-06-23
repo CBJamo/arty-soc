@@ -12,6 +12,7 @@ analyzer.configure_subsampler(64)
 analyzer.run(offset=128, length=8192)
 analyzer.wait_done()
 analyzer.upload()
+analyzer.save("dump.vcd")
 analyzer.save("dump.sr")
 
 # # #
