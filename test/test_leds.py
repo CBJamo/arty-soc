@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-from litex.soc.tools.remote import RemoteClient
 
 import time
+
+from litex.soc.tools.remote import RemoteClient
 
 
 class PWM:
@@ -69,7 +70,6 @@ knight_rider("r", 64)
 time.sleep(0.5)
 
 disco()
-
 
 # # #
 
