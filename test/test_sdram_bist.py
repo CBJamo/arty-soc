@@ -100,47 +100,78 @@ GB = 1024*MB
 def write_test(base, length):
     wb.regs.generator_reset.write(1)
     wb.regs.generator_reset.write(0)
-    wb.regs.generator_base.write(base)
-    wb.regs.generator_length.write((length*8)//128)
-    start = time.time()
+    wb.regs.generator_base.write(base) # FIXME in bytes
+    wb.regs.generator_length.write((length*8)//128) # FIXME in bytes
     wb.regs.generator_start.write(1)
     while(not wb.regs.generator_done.read()):
         pass
-    end = time.time()
-    speed = length/(end-start)
+    ticks = wb.regs.generator_ticks.read()
+    speed = wb.constants.config_clock_frequency*length/ticks
     return speed
 
 def read_test(base, length):
     wb.regs.checker_reset.write(1)
     wb.regs.checker_reset.write(0)
-    wb.regs.checker_base.write(base)
-    wb.regs.checker_length.write((length*8)//128)
+    wb.regs.checker_base.write(base) # FIXME in bytes
+    wb.regs.checker_length.write((length*8)//128) # FIXME in bytes
     start = time.time()
     wb.regs.checker_start.write(1)
     while(not wb.regs.checker_done.read()):
         pass
-    end = time.time()
-    speed = length/(end-start)
+    ticks = wb.regs.checker_ticks.read()
+    speed = wb.constants.config_clock_frequency*length/ticks
     errors = wb.regs.checker_errors.read()
     return speed, errors
 
 #
 
-test_length = 128*MB
 test_base = 0x00000000
+test_increment = 128
+test_length = 128*MB
 
 #
+
+# verify we are able to detect errors
+print("write base error check...", end="")
+write_speed = write_test(test_base + 128, test_length)
+read_speed, read_errors = read_test(test_base, test_length)
+print("ok") if read_errors else print("ko")
+
+print("write length error check...", end="")
+write_speed = write_test(test_base, test_length - 128)
+read_speed, read_errors = read_test(test_base, test_length)
+print("ok") if read_errors else print("ko")
+
+print("read base error check...", end="")
+write_speed = write_test(test_base, test_length)
+read_speed, read_errors = read_test(test_base + 128, test_length)
+print("ok") if read_errors else print("ko")
+
+print("read length error check...", end="")
+write_speed = write_test(test_base, test_length)
+read_speed, read_errors = read_test(test_base, test_length + 128)
+print("ok") if read_errors else print("ko")
+
+#
+
+tested_errors = 0
+tested_length = 0
 
 i = 0
 while True:
     if i%10 == 0:
-        print("WR_SPEED(Gbps) RD_SPEED(Gbps) ERRORS")
-    write_speed = write_test(test_base + 128*i, test_length)
-    read_speed, read_errors = read_test(test_base + 128*i, test_length)
-    print("{:14.2f} {:14.2f} {:6d}".format(
+        print("WR_SPEED(Gbps) RD_SPEED(Gbps) TESTED(MB)      ERRORS")
+    base = test_base + test_increment*i
+    length = test_length
+    write_speed = write_test(base, length)
+    read_speed, read_errors = read_test(base, length)
+    tested_errors = tested_errors + read_errors
+    tested_length = tested_length + test_length
+    print("{:14.2f} {:14.2f} {:9d} {:12d}".format(
         8*write_speed/GB,
         8*read_speed/GB,
-        read_errors))
+        tested_length//MB,
+        tested_errors))
     i += 1
 
 # # #
