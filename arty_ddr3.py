@@ -19,8 +19,8 @@ class BaseSoC(SoCSDRAM):
     csr_map_update(SoCSDRAM.csr_map, csr_peripherals)
 
     def __init__(self, platform,
-                 with_sdram_bist=True, bist_async=True, bist_random=False,
-                 analyzer=None):
+                 with_sdram_bist=True, bist_async=False, bist_random=True,
+                 with_analyzer=False):
         clk_freq = int(100e6)
         SoCSDRAM.__init__(self, platform, clk_freq,
             cpu_type=None,
@@ -56,8 +56,8 @@ class BaseSoC(SoCSDRAM):
         self.add_wb_master(self.cpu_or_bridge.wishbone)
 
         # analyzer
-        if analyzer == "generator":
-            analyzer_signals = [
+        if with_analyzer:
+            generator_group = [
                 generator_user_port.cmd.valid,
                 generator_user_port.cmd.ready,
                 generator_user_port.cmd.we,
@@ -65,36 +65,21 @@ class BaseSoC(SoCSDRAM):
 
                 generator_user_port.wdata.valid,
                 generator_user_port.wdata.ready,
-                generator_user_port.wdata.we,
-
-                self.generator.start.re,
-                self.checker.start.re
+                generator_user_port.wdata.we
             ]
-            self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 512)
-        elif analyzer == "checker":
-            gen_data = Signal(32)
-            read_data = Signal(32)
-            self.comb += [
-                gen_data.eq(self.checker.core.gen.o),
-                read_data.eq(checker_user_port.rdata.data)
-            ]
-            analyzer_signals = [
+            checker_group = [
                 checker_user_port.cmd.valid,
                 checker_user_port.cmd.ready,
                 checker_user_port.cmd.we,
                 checker_user_port.cmd.adr,
 
                 checker_user_port.rdata.valid,
-                checker_user_port.rdata.ready,
-
-                self.generator.start.re,
-                self.checker.start.re,
-
-                gen_data,
-                read_data,
-
-                self.checker.core.errors
+                checker_user_port.rdata.ready
             ]
+            analyzer_signals = {
+                0 : generator_group,
+                1 : checker_group
+            }
             self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 512)
 
     def do_exit(self, vns):
