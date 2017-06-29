@@ -18,7 +18,7 @@ class EtherboneSoC(BaseSoC):
     csr_map_update(BaseSoC.csr_map, csr_peripherals)
 
     def __init__(self, platform, mac_address=0x10e2d5000000, ip_address="192.168.1.50"):
-        BaseSoC.__init__(self, platform, cpu_type=None, csr_data_width=32)
+        BaseSoC.__init__(self, platform, cpu_type=None, csr_data_width=32, l2_size=32)
 
         # ethernet mac/udp/ip stack
         self.submodules.ethphy = LiteEthPHYMII(self.platform.request("eth_clocks"),
