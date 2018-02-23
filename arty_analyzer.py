@@ -2,7 +2,7 @@
 
 from arty_etherbone import *
 
-from litex.gen.genlib.cdc import MultiReg
+from migen.genlib.cdc import MultiReg
 
 from litescope import LiteScopeAnalyzer
 
@@ -25,7 +25,7 @@ class AnalyzerSoC(EtherboneSoC):
         pmoda_4 = Signal(name_override="pmoda_4")
         pmoda_5 = Signal(name_override="pmoda_5")
         pmoda_6 = Signal(name_override="pmoda_6")
-        pmoda_7 = Signal(name_override="pmoda_7")        
+        pmoda_7 = Signal(name_override="pmoda_7")
         # deglitch with multireg
         self.specials += [
             MultiReg(pmoda[0], pmoda_0),
@@ -45,7 +45,7 @@ class AnalyzerSoC(EtherboneSoC):
             pmoda_4,
             pmoda_5,
             pmoda_6,
-            pmoda_7            
+            pmoda_7
         ]
         self.submodules.analyzer = LiteScopeAnalyzer(analyzer_signals, 8192)
 
