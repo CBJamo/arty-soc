@@ -5,7 +5,7 @@ import os
 from migen import *
 from migen.genlib.resetsync import AsyncResetSynchronizer
 
-from litex.boards.platforms import arty
+from litex.boards.platforms import arty, arty_s7
 
 from litex.soc.integration.soc_core import mem_decoder
 from litex.soc.integration.soc_sdram import *
@@ -36,7 +36,7 @@ def period_ns(freq):
 
 
 class CRG(Module):
-    def __init__(self, platform):
+    def __init__(self, platform, with_s7):
         self.clock_domains.cd_sys = ClockDomain()
         self.clock_domains.cd_sys4x = ClockDomain(reset_less=True)
         self.clock_domains.cd_sys4x_dqs = ClockDomain(reset_less=True)
@@ -102,11 +102,12 @@ class CRG(Module):
             )
         self.specials += Instance("IDELAYCTRL", i_REFCLK=ClockSignal("clk200"), i_RST=ic_reset)
 
-        eth_clk = Signal()
-        self.specials += [
-            Instance("BUFR", p_BUFR_DIVIDE="4", i_CE=1, i_CLR=0, i_I=clk100, o_O=eth_clk),
-            Instance("BUFG", i_I=eth_clk, o_O=platform.request("eth_ref_clk")),
-        ]
+        if not with_s7:
+            eth_clk = Signal()
+            self.specials += [
+                Instance("BUFR", p_BUFR_DIVIDE="4", i_CE=1, i_CLR=0, i_I=clk100, o_O=eth_clk),
+                Instance("BUFG", i_I=eth_clk, o_O=platform.request("eth_ref_clk")),
+            ]
 
 
 class BaseSoC(SoCSDRAM):
@@ -127,7 +128,7 @@ class BaseSoC(SoCSDRAM):
     }
     mem_map.update(SoCSDRAM.mem_map)
 
-    def __init__(self, platform,
+    def __init__(self, platform, with_s7=False,
                  with_sdram_bist=True, bist_async=True, bist_random=True,
                  spiflash="spiflash_1x",
                  **kwargs):
@@ -138,7 +139,7 @@ class BaseSoC(SoCSDRAM):
             with_uart=False,
             **kwargs)
 
-        self.submodules.crg = CRG(platform)
+        self.submodules.crg = CRG(platform, with_s7)
         self.submodules.dna = dna.DNA()
         self.submodules.xadc = xadc.XADC()
 
@@ -159,9 +160,14 @@ class BaseSoC(SoCSDRAM):
         self.submodules.rgb_leds = led.RGBLed(platform.request("rgb_leds"))
 
         # sdram
-        self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
-        self.add_constant("A7DDRPHY_BITSLIP", 3)
-        self.add_constant("A7DDRPHY_DELAY", 14)
+        if with_s7:
+            self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
+            self.add_constant("A7DDRPHY_BITSLIP", 3)
+            self.add_constant("A7DDRPHY_DELAY", 17)
+        else:
+            self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
+            self.add_constant("A7DDRPHY_BITSLIP", 3)
+            self.add_constant("A7DDRPHY_DELAY", 14)
         sdram_module = MT41K128M16(self.clk_freq, "1:4")
         self.register_sdram(self.ddrphy,
                             sdram_module.geom_settings,
@@ -241,14 +247,16 @@ def main():
     parser = argparse.ArgumentParser(description="Arty LiteX SoC")
     builder_args(parser)
     soc_sdram_args(parser)
+    parser.add_argument("--with-s7", action="store_true",
+                        help="Create SoC for Arty S7 (No Ethernet)")
     parser.add_argument("--with-ethernet", action="store_true",
                         help="enable Ethernet support")
     parser.add_argument("--nocompile-gateware", action="store_true")
     args = parser.parse_args()
 
-    platform = arty.Platform()
-    cls = MiniSoC if args.with_ethernet else BaseSoC
-    soc = cls(platform, **soc_sdram_argdict(args))
+    platform = arty_s7.Platform() if args.with_s7 else arty.Platform()
+    cls = MiniSoC if (args.with_ethernet and not args.with_s7) else BaseSoC
+    soc = cls(platform, with_s7=args.with_s7, **soc_sdram_argdict(args))
     builder = Builder(soc, output_dir="build",
                       compile_gateware=not args.nocompile_gateware,
                       csr_csv="test/csr.csv")

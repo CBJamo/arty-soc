@@ -6,9 +6,19 @@ base:
 	cd firmware && make clean all
 	./arty_base.py --cpu-type $(CPU)
 
+base-s7:
+	rm -rf build
+	./arty_base.py --nocompile-gateware --cpu-type $(CPU) --with-s7
+	cd firmware && make clean all
+	./arty_base.py --cpu-type $(CPU) --with-s7
+
 ddr3:
 	rm -rf build
 	./arty_ddr3.py
+
+ddr3-s7:
+	rm -rf build
+	./arty_ddr3.py --with-s7
 
 minisoc:
 	rm -rf build
