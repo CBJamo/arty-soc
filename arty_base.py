@@ -160,14 +160,9 @@ class BaseSoC(SoCSDRAM):
         self.submodules.rgb_leds = led.RGBLed(platform.request("rgb_leds"))
 
         # sdram
-        if with_s7:
-            self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
-            self.add_constant("A7DDRPHY_BITSLIP", 3)
-            self.add_constant("A7DDRPHY_DELAY", 17)
-        else:
-            self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
-            self.add_constant("A7DDRPHY_BITSLIP", 3)
-            self.add_constant("A7DDRPHY_DELAY", 14)
+        self.submodules.ddrphy = a7ddrphy.A7DDRPHY(platform.request("ddram"))
+        self.add_constant("READ_LEVELING_BITSLIP", 3)
+        self.add_constant("READ_LEVELING_DELAY", 17 if with_s7 else 14)
         sdram_module = MT41K128M16(self.clk_freq, "1:4")
         self.register_sdram(self.ddrphy,
                             sdram_module.geom_settings,
