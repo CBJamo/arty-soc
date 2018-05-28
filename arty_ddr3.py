@@ -18,7 +18,7 @@ class BaseSoC(SoCSDRAM):
     }
     csr_map_update(SoCSDRAM.csr_map, csr_peripherals)
 
-    def __init__(self, platform, with_s7=False,
+    def __init__(self, platform,
                  with_sdram_bist=True, bist_async=False, bist_random=True,
                  with_analyzer=False):
         clk_freq = int(100e6)
@@ -29,7 +29,7 @@ class BaseSoC(SoCSDRAM):
             with_uart=False,
             with_timer=False)
 
-        self.submodules.crg = CRG(platform, with_s7)
+        self.submodules.crg = CRG(platform)
         self.submodules.dna = dna.DNA()
         self.submodules.xadc = xadc.XADC()
 
@@ -91,12 +91,12 @@ def main():
     parser = argparse.ArgumentParser(description="Arty LiteX SoC")
     builder_args(parser)
     soc_sdram_args(parser)
-    parser.add_argument("--with-s7", action="store_true",
+    parser.add_argument("--s7", action="store_true",
                         help="Create SoC for Arty S7")
     args = parser.parse_args()
 
-    platform = arty_s7.Platform() if args.with_s7 else arty.Platform()
-    soc = BaseSoC(platform, with_s7=args.with_s7, **soc_sdram_argdict(args))
+    platform = arty_s7.Platform() if args.s7 else arty.Platform()
+    soc = BaseSoC(platform, **soc_sdram_argdict(args))
     builder = Builder(soc, output_dir="build", csr_csv="test/csr.csv")
     vns = builder.build()
     soc.do_exit(vns)
