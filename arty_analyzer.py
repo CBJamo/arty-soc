@@ -2,6 +2,8 @@
 
 from arty_etherbone import *
 
+import litex.build.generic_platform as gen_plat
+
 from migen.genlib.cdc import MultiReg
 
 from litescope import LiteScopeAnalyzer
@@ -15,7 +17,13 @@ class AnalyzerSoC(EtherboneSoC):
     def __init__(self, platform):
         EtherboneSoC.__init__(self, platform)
 
-        pmoda = platform.request("pmoda")
+        _pmoda = [( "analyzer", 0, 
+            gen_plat.Pins("pmoda:0 pmoda:1 pmoda:2 pmoda:3 pmoda:4 pmoda:5 pmoda:6 pmoda:7"),
+            gen_plat.IOStandard("LVCMOS33")) ]
+
+        platform.add_extension(_pmoda)
+
+        pmoda = platform.request("analyzer")
 
         # use name override to keep naming in capture
         pmoda_0 = Signal(name_override="pmoda_0")

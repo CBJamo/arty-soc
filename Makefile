@@ -30,6 +30,10 @@ etherbone:
 	rm -rf build
 	./arty_etherbone.py
 
+analyzer:
+	rm -rf build
+	./arty_analyzer.py
+
 load:
 	./load.py
 
